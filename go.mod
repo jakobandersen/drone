@@ -100,3 +100,5 @@ require (
 )
 
 replace github.com/h2non/gock => gopkg.in/h2non/gock.v1 v1.0.14
+
+replace github.com/drone/drone-runtime => github.com/jakobandersen/drone-runtime v0.0.0-20190831101428-b057de96e784
