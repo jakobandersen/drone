@@ -22,7 +22,7 @@ import (
 // convertRepository is a helper function that converts a
 // repository from the source code management system to the
 // local datastructure.
-func convertRepository(src *scm.Repository) *core.Repository {
+func convertRepository(src *scm.Repository, visibility string, trusted bool) *core.Repository {
 	return &core.Repository{
 		UID:        src.ID,
 		Namespace:  src.Namespace,
@@ -32,17 +32,20 @@ func convertRepository(src *scm.Repository) *core.Repository {
 		SSHURL:     src.CloneSSH,
 		Link:       src.Link,
 		Private:    src.Private,
-		Visibility: convertVisibility(src),
+		Visibility: convertVisibility(src, visibility),
 		Branch:     src.Branch,
+		Trusted:    trusted,
 	}
 }
 
 // convertVisibility is a helper function that returns the
 // repository visibility based on the privacy flag.
-func convertVisibility(src *scm.Repository) string {
+func convertVisibility(src *scm.Repository, visibility string) string {
 	switch {
 	case src.Private == true:
 		return core.VisibilityPrivate
+	case visibility == core.VisibilityInternal:
+		return core.VisibilityInternal
 	default:
 		return core.VisibilityPublic
 	}

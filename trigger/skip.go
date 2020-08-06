@@ -57,6 +57,10 @@ func skipMessage(hook *core.Hook) bool {
 	switch {
 	case hook.Event == core.EventTag:
 		return false
+	case hook.Event == core.EventCron:
+		return false
+	case hook.Event == core.EventCustom:
+		return false
 	case skipMessageEval(hook.Message):
 		return true
 	case skipMessageEval(hook.Title):

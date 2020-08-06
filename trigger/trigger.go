@@ -32,36 +32,45 @@ import (
 )
 
 type triggerer struct {
-	config  core.ConfigService
-	commits core.CommitService
-	status  core.StatusService
-	builds  core.BuildStore
-	sched   core.Scheduler
-	repos   core.RepositoryStore
-	users   core.UserStore
-	hooks   core.WebhookSender
+	canceler core.Canceler
+	config   core.ConfigService
+	convert  core.ConvertService
+	commits  core.CommitService
+	status   core.StatusService
+	builds   core.BuildStore
+	sched    core.Scheduler
+	repos    core.RepositoryStore
+	users    core.UserStore
+	validate core.ValidateService
+	hooks    core.WebhookSender
 }
 
 // New returns a new build triggerer.
 func New(
+	canceler core.Canceler,
 	config core.ConfigService,
+	convert core.ConvertService,
 	commits core.CommitService,
 	status core.StatusService,
 	builds core.BuildStore,
 	sched core.Scheduler,
 	repos core.RepositoryStore,
 	users core.UserStore,
+	validate core.ValidateService,
 	hooks core.WebhookSender,
 ) core.Triggerer {
 	return &triggerer{
-		config:  config,
-		commits: commits,
-		status:  status,
-		builds:  builds,
-		sched:   sched,
-		repos:   repos,
-		users:   users,
-		hooks:   hooks,
+		canceler: canceler,
+		config:   config,
+		convert:  convert,
+		commits:  commits,
+		status:   status,
+		builds:   builds,
+		sched:    sched,
+		repos:    repos,
+		users:    users,
+		validate: validate,
+		hooks:    hooks,
 	}
 }
 
@@ -152,47 +161,57 @@ func (t *triggerer) Trigger(ctx context.Context, repo *core.Repository, base *co
 	// 		obj = base.Ref
 	// 	}
 	// }
-
-	req := &core.ConfigArgs{
-		User: user,
-		Repo: repo,
-		// TODO this is duplicated
-		Build: &core.Build{
-			RepoID:  repo.ID,
-			Trigger: base.Trigger,
-			Parent:  base.Parent,
-			Status:  core.StatusPending,
-			Event:   base.Event,
-			Action:  base.Action,
-			Link:    base.Link,
-			// Timestamp:    base.Timestamp,
-			Title:        base.Title,
-			Message:      base.Message,
-			Before:       base.Before,
-			After:        base.After,
-			Ref:          base.Ref,
-			Fork:         base.Fork,
-			Source:       base.Source,
-			Target:       base.Target,
-			Author:       base.Author,
-			AuthorName:   base.AuthorName,
-			AuthorEmail:  base.AuthorEmail,
-			AuthorAvatar: base.AuthorAvatar,
-			Params:       base.Params,
-			Cron:         base.Cron,
-			Deploy:       base.Deployment,
-			DeployID:     base.DeploymentID,
-			Sender:       base.Sender,
-			Created:      time.Now().Unix(),
-			Updated:      time.Now().Unix(),
-		},
+	tmpBuild := &core.Build{
+		RepoID:  repo.ID,
+		Trigger: base.Trigger,
+		Parent:  base.Parent,
+		Status:  core.StatusPending,
+		Event:   base.Event,
+		Action:  base.Action,
+		Link:    base.Link,
+		// Timestamp:    base.Timestamp,
+		Title:        base.Title,
+		Message:      base.Message,
+		Before:       base.Before,
+		After:        base.After,
+		Ref:          base.Ref,
+		Fork:         base.Fork,
+		Source:       base.Source,
+		Target:       base.Target,
+		Author:       base.Author,
+		AuthorName:   base.AuthorName,
+		AuthorEmail:  base.AuthorEmail,
+		AuthorAvatar: base.AuthorAvatar,
+		Params:       base.Params,
+		Cron:         base.Cron,
+		Deploy:       base.Deployment,
+		DeployID:     base.DeploymentID,
+		Sender:       base.Sender,
+		Created:      time.Now().Unix(),
+		Updated:      time.Now().Unix(),
 	}
-
+	req := &core.ConfigArgs{
+		User:  user,
+		Repo:  repo,
+		Build: tmpBuild,
+	}
 	raw, err := t.config.Find(ctx, req)
 	if err != nil {
 		logger = logger.WithError(err)
 		logger.Warnln("trigger: cannot find yaml")
 		return nil, err
+	}
+
+	raw, err = t.convert.Convert(ctx, &core.ConvertArgs{
+		User:   user,
+		Repo:   repo,
+		Build:  tmpBuild,
+		Config: raw,
+	})
+	if err != nil {
+		logger = logger.WithError(err)
+		logger.Warnln("trigger: cannot convert yaml")
+		return t.createBuildError(ctx, repo, base, err.Error())
 	}
 
 	// this code is temporarily in place to detect and convert
@@ -205,13 +224,25 @@ func (t *triggerer) Trigger(ctx context.Context, repo *core.Repository, base *co
 	if err != nil {
 		logger = logger.WithError(err)
 		logger.Warnln("trigger: cannot convert yaml")
-		return nil, err
+		return t.createBuildError(ctx, repo, base, err.Error())
 	}
 
 	manifest, err := yaml.ParseString(raw.Data)
 	if err != nil {
 		logger = logger.WithError(err)
 		logger.Warnln("trigger: cannot parse yaml")
+		return t.createBuildError(ctx, repo, base, err.Error())
+	}
+
+	err = t.validate.Validate(ctx, &core.ValidateArgs{
+		User:   user,
+		Repo:   repo,
+		Build:  tmpBuild,
+		Config: raw,
+	})
+	if err != nil {
+		logger = logger.WithError(err)
+		logger.Warnln("trigger: yaml validation error")
 		return t.createBuildError(ctx, repo, base, err.Error())
 	}
 
@@ -323,6 +354,7 @@ func (t *triggerer) Trigger(ctx context.Context, repo *core.Repository, base *co
 		Deploy:       base.Deployment,
 		DeployID:     base.DeploymentID,
 		Sender:       base.Sender,
+		Cron:         base.Cron,
 		Created:      time.Now().Unix(),
 		Updated:      time.Now().Unix(),
 	}
@@ -378,7 +410,7 @@ func (t *triggerer) Trigger(ctx context.Context, repo *core.Repository, base *co
 	for _, stage := range stages {
 		// here we re-work the dependencies for the stage to
 		// account for the fact that some steps may be skipped
-		// and may otherwise break the dependnecy chain.
+		// and may otherwise break the dependency chain.
 		stage.DependsOn = dag.Dependencies(stage.Name)
 
 		// if the stage is pending dependencies, but those
@@ -430,6 +462,12 @@ func (t *triggerer) Trigger(ctx context.Context, repo *core.Repository, base *co
 		logger = logger.WithError(err)
 		logger.Warnln("trigger: cannot send webhook")
 	}
+
+	if repo.CancelPush && build.Event == core.EventPush ||
+		repo.CancelPulls && build.Event == core.EventPullRequest {
+		go t.canceler.CancelPending(ctx, repo, build)
+	}
+
 	// err = t.hooks.SendEndpoint(ctx, payload, repo.Endpoints.Webhook)
 	// if err != nil {
 	// 	logger.Warn().Err(err).
@@ -492,6 +530,7 @@ func (t *triggerer) createBuildError(ctx context.Context, repo *core.Repository,
 		Sender:       base.Sender,
 		Created:      time.Now().Unix(),
 		Updated:      time.Now().Unix(),
+		Started:      time.Now().Unix(),
 		Finished:     time.Now().Unix(),
 	}
 

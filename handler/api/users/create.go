@@ -22,6 +22,7 @@ import (
 	"github.com/dchest/uniuri"
 	"github.com/drone/drone/core"
 	"github.com/drone/drone/handler/api/render"
+	"github.com/drone/drone/handler/api/request"
 	"github.com/drone/drone/logger"
 )
 
@@ -32,7 +33,7 @@ type userWithToken struct {
 
 // HandleCreate returns an http.HandlerFunc that processes an http.Request
 // to create the named user account in the system.
-func HandleCreate(users core.UserStore, sender core.WebhookSender) http.HandlerFunc {
+func HandleCreate(users core.UserStore, service core.UserService, sender core.WebhookSender) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		in := new(core.User)
 		err := json.NewDecoder(r.Body).Decode(in)
@@ -50,10 +51,26 @@ func HandleCreate(users core.UserStore, sender core.WebhookSender) http.HandlerF
 			Machine: in.Machine,
 			Created: time.Now().Unix(),
 			Updated: time.Now().Unix(),
-			Hash:    in.Hash,
+			Hash:    in.Token,
 		}
 		if user.Hash == "" {
 			user.Hash = uniuri.NewLen(32)
+		}
+
+		// if the user is not a machine account, we lookup
+		// the user in the remote system. We can then augment
+		// the user input with the remote system data.
+		if !user.Machine {
+			viewer, _ := request.UserFrom(r.Context())
+			remote, err := service.FindLogin(r.Context(), viewer, user.Login)
+			if err == nil {
+				if user.Login != remote.Login && remote.Login != "" {
+					user.Login = remote.Login
+				}
+				if user.Email == "" {
+					user.Email = remote.Email
+				}
+			}
 		}
 
 		err = user.Validate()

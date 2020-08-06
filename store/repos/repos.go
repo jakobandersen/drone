@@ -104,6 +104,27 @@ func (s *repoStore) ListIncomplete(ctx context.Context) ([]*core.Repository, err
 	return out, err
 }
 
+func (s *repoStore) ListAll(ctx context.Context, limit, offset int) ([]*core.Repository, error) {
+	var out []*core.Repository
+	err := s.db.View(func(queryer db.Queryer, binder db.Binder) error {
+		params := map[string]interface{}{
+			"limit":  limit,
+			"offset": offset,
+		}
+		query, args, err := binder.BindNamed(queryAll, params)
+		if err != nil {
+			return err
+		}
+		rows, err := queryer.Query(query, args...)
+		if err != nil {
+			return err
+		}
+		out, err = scanRows(rows)
+		return err
+	})
+	return out, err
+}
+
 func (s *repoStore) Find(ctx context.Context, id int64) (*core.Repository, error) {
 	out := &core.Repository{ID: id}
 	err := s.db.View(func(queryer db.Queryer, binder db.Binder) error {
@@ -266,6 +287,8 @@ SELECT
 ,repo_protected
 ,repo_no_forks
 ,repo_no_pulls
+,repo_cancel_pulls
+,repo_cancel_push
 ,repo_synced
 ,repo_created
 ,repo_updated
@@ -327,6 +350,11 @@ WHERE perms.perm_user_id = :user_id
 ORDER BY repo_slug ASC
 `
 
+const queryAll = queryCols + `
+FROM repos
+LIMIT :limit OFFSET :offset
+`
+
 const stmtDelete = `
 DELETE FROM repos WHERE repo_id = :repo_id
 `
@@ -353,6 +381,8 @@ INSERT INTO repos (
 ,repo_protected
 ,repo_no_forks
 ,repo_no_pulls
+,repo_cancel_pulls
+,repo_cancel_push
 ,repo_synced
 ,repo_created
 ,repo_updated
@@ -380,6 +410,8 @@ INSERT INTO repos (
 ,:repo_protected
 ,:repo_no_forks
 ,:repo_no_pulls
+,:repo_cancel_pulls
+,:repo_cancel_push
 ,:repo_synced
 ,:repo_created
 ,:repo_updated
@@ -425,6 +457,8 @@ UPDATE repos SET
 ,repo_protected = :repo_protected
 ,repo_no_forks = :repo_no_forks
 ,repo_no_pulls = :repo_no_pulls
+,repo_cancel_pulls = :repo_cancel_pulls
+,repo_cancel_push = :repo_cancel_push
 ,repo_timeout = :repo_timeout
 ,repo_counter = :repo_counter
 ,repo_synced = :repo_synced

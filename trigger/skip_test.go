@@ -180,6 +180,26 @@ func Test_skipMessage(t *testing.T) {
 			title: "update readme [CI SKIP]",
 			want:  false,
 		},
+		{
+			event: "cron",
+			title: "update readme [CI SKIP]",
+			want:  false,
+		},
+		{
+			event: "cron",
+			title: "update readme [CI SKIP]",
+			want:  false,
+		},
+		{
+			event: "custom",
+			title: "update readme [CI SKIP]",
+			want:  false,
+		},
+		{
+			event: "custom",
+			title: "update readme [CI SKIP]",
+			want:  false,
+		},
 	}
 	for _, test := range tests {
 		hook := &core.Hook{

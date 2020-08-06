@@ -60,6 +60,12 @@ func TestTrigger(t *testing.T) {
 	mockConfigService := mock.NewMockConfigService(controller)
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(dummyYaml, nil)
 
+	mockConvertService := mock.NewMockConvertService(controller)
+	mockConvertService.EXPECT().Convert(gomock.Any(), gomock.Any()).Return(dummyYaml, nil)
+
+	mockValidateService := mock.NewMockValidateService(controller)
+	mockValidateService.EXPECT().Validate(gomock.Any(), gomock.Any()).Return(nil)
+
 	mockStatus := mock.NewMockStatusService(controller)
 	mockStatus.EXPECT().Send(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Do(checkStatus)
 
@@ -73,13 +79,16 @@ func TestTrigger(t *testing.T) {
 	mockWebhooks.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil)
 
 	triggerer := New(
+		nil,
 		mockConfigService,
+		mockConvertService,
 		nil,
 		mockStatus,
 		mockBuilds,
 		mockQueue,
 		mockRepos,
 		mockUsers,
+		mockValidateService,
 		mockWebhooks,
 	)
 
@@ -97,6 +106,9 @@ func TestTrigger(t *testing.T) {
 // message includes the [CI SKIP] keyword.
 func TestTrigger_SkipCI(t *testing.T) {
 	triggerer := New(
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -129,7 +141,10 @@ func TestTrigger_NoOwner(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
 		mockUsers,
+		nil,
 		nil,
 	)
 
@@ -152,13 +167,16 @@ func TestTrigger_MissingYaml(t *testing.T) {
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(nil, io.EOF)
 
 	triggerer := New(
+		nil,
 		mockConfigService,
 		nil,
 		nil,
 		nil,
 		nil,
 		nil,
+		nil,
 		mockUsers,
+		nil,
 		nil,
 	)
 
@@ -180,6 +198,9 @@ func TestTrigger_ErrorYaml(t *testing.T) {
 	mockConfigService := mock.NewMockConfigService(controller)
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(dummyYamlInvalid, nil)
 
+	mockConvertService := mock.NewMockConvertService(controller)
+	mockConvertService.EXPECT().Convert(gomock.Any(), gomock.Any()).Return(dummyYamlInvalid, nil)
+
 	mockRepos := mock.NewMockRepositoryStore(controller)
 	mockRepos.EXPECT().Increment(gomock.Any(), dummyRepo).Return(dummyRepo, nil)
 
@@ -187,13 +208,16 @@ func TestTrigger_ErrorYaml(t *testing.T) {
 	mockBuilds.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil) // .Do(checkBuild).Return(nil)
 
 	triggerer := New(
+		nil,
 		mockConfigService,
+		mockConvertService,
 		nil,
 		nil,
 		mockBuilds,
 		nil,
 		mockRepos,
 		mockUsers,
+		nil,
 		nil,
 	)
 
@@ -225,20 +249,29 @@ func TestTrigger_SkipBranch(t *testing.T) {
 	mockConfigService := mock.NewMockConfigService(controller)
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(dummyYamlSkipBranch, nil)
 
+	mockConvertService := mock.NewMockConvertService(controller)
+	mockConvertService.EXPECT().Convert(gomock.Any(), gomock.Any()).Return(dummyYamlSkipBranch, nil)
+
+	mockValidateService := mock.NewMockValidateService(controller)
+	mockValidateService.EXPECT().Validate(gomock.Any(), gomock.Any()).Return(nil)
+
 	triggerer := New(
+		nil,
 		mockConfigService,
+		mockConvertService,
 		nil,
 		nil,
 		nil,
 		nil,
 		nil,
 		mockUsers,
+		mockValidateService,
 		nil,
 	)
 
 	_, err := triggerer.Trigger(noContext, dummyRepo, dummyHook)
 	if err != nil {
-		t.Errorf("Expect build silenty skipped if branch does not match")
+		t.Errorf("Expect build silently skipped if branch does not match")
 	}
 }
 
@@ -254,20 +287,29 @@ func TestTrigger_SkipEvent(t *testing.T) {
 	mockConfigService := mock.NewMockConfigService(controller)
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(dummyYamlSkipEvent, nil)
 
+	mockConvertService := mock.NewMockConvertService(controller)
+	mockConvertService.EXPECT().Convert(gomock.Any(), gomock.Any()).Return(dummyYamlSkipEvent, nil)
+
+	mockValidateService := mock.NewMockValidateService(controller)
+	mockValidateService.EXPECT().Validate(gomock.Any(), gomock.Any()).Return(nil)
+
 	triggerer := New(
+		nil,
 		mockConfigService,
+		mockConvertService,
 		nil,
 		nil,
 		nil,
 		nil,
 		nil,
 		mockUsers,
+		mockValidateService,
 		nil,
 	)
 
 	_, err := triggerer.Trigger(noContext, dummyRepo, dummyHook)
 	if err != nil {
-		t.Errorf("Expect build silenty skipped if event does not match")
+		t.Errorf("Expect build silently skipped if event does not match")
 	}
 }
 
@@ -283,20 +325,29 @@ func TestTrigger_SkipAction(t *testing.T) {
 	mockConfigService := mock.NewMockConfigService(controller)
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(dummyYamlSkipAction, nil)
 
+	mockConvertService := mock.NewMockConvertService(controller)
+	mockConvertService.EXPECT().Convert(gomock.Any(), gomock.Any()).Return(dummyYamlSkipAction, nil)
+
+	mockValidateService := mock.NewMockValidateService(controller)
+	mockValidateService.EXPECT().Validate(gomock.Any(), gomock.Any()).Return(nil)
+
 	triggerer := New(
+		nil,
 		mockConfigService,
+		mockConvertService,
 		nil,
 		nil,
 		nil,
 		nil,
 		nil,
 		mockUsers,
+		mockValidateService,
 		nil,
 	)
 
 	_, err := triggerer.Trigger(noContext, dummyRepo, dummyHook)
 	if err != nil {
-		t.Errorf("Expect build silenty skipped if action does not match")
+		t.Errorf("Expect build silently skipped if action does not match")
 	}
 }
 
@@ -316,14 +367,23 @@ func TestTrigger_ErrorIncrement(t *testing.T) {
 	mockConfigService := mock.NewMockConfigService(controller)
 	mockConfigService.EXPECT().Find(gomock.Any(), gomock.Any()).Return(dummyYaml, nil)
 
+	mockConvertService := mock.NewMockConvertService(controller)
+	mockConvertService.EXPECT().Convert(gomock.Any(), gomock.Any()).Return(dummyYaml, nil)
+
+	mockValidateService := mock.NewMockValidateService(controller)
+	mockValidateService.EXPECT().Validate(gomock.Any(), gomock.Any()).Return(nil)
+
 	triggerer := New(
+		nil,
 		mockConfigService,
+		mockConvertService,
 		nil,
 		nil,
 		nil,
 		nil,
 		mockRepos,
 		mockUsers,
+		mockValidateService,
 		nil,
 	)
 

@@ -20,6 +20,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/drone/drone-yaml/yaml/converter"
 	"github.com/drone/drone/core"
 	"github.com/drone/drone/store/shared/db"
 
@@ -101,6 +102,7 @@ type (
 func New(
 	builds core.BuildStore,
 	config core.ConfigService,
+	converter core.ConvertService,
 	events core.Pubsub,
 	logs core.LogStore,
 	logz core.LogStream,
@@ -119,6 +121,7 @@ func New(
 	return &Manager{
 		Builds:    builds,
 		Config:    config,
+		Converter: converter,
 		Events:    events,
 		Globals:   globals,
 		Logs:      logs,
@@ -141,6 +144,7 @@ func New(
 type Manager struct {
 	Builds    core.BuildStore
 	Config    core.ConfigService
+	Converter core.ConvertService
 	Events    core.Pubsub
 	Globals   core.GlobalSecretStore
 	Logs      core.LogStore
@@ -285,6 +289,26 @@ func (m *Manager) Details(ctx context.Context, id int64) (*Context, error) {
 		logger.Warnln("manager: cannot find configuration")
 		return nil, err
 	}
+
+	// this code is temporarily in place to detect and convert
+	// the legacy yaml configuration file to the new format.
+	config.Data, _ = converter.ConvertString(config.Data, converter.Metadata{
+		Filename: repo.Config,
+		URL:      repo.Link,
+		Ref:      build.Ref,
+	})
+
+	config, err = m.Converter.Convert(noContext, &core.ConvertArgs{
+		Build:  build,
+		Config: config,
+		Repo:   repo,
+		User:   user,
+	})
+	if err != nil {
+		logger = logger.WithError(err)
+		logger.Warnln("manager: cannot convert configuration")
+		return nil, err
+	}
 	var secrets []*core.Secret
 	tmpSecrets, err := m.Secrets.List(noContext, repo.ID)
 	if err != nil {
@@ -413,6 +437,7 @@ func (m *Manager) AfterAll(ctx context.Context, stage *core.Stage) error {
 		Stages:    m.Stages,
 		Status:    m.Status,
 		Users:     m.Users,
+		Webhook:   m.Webhook,
 	}
 	return t.do(ctx, stage)
 }
@@ -448,21 +473,33 @@ func (m *Manager) Netrc(ctx context.Context, id int64) (*core.Netrc, error) {
 // Watch watches for build cancellation requests.
 func (m *Manager) Watch(ctx context.Context, id int64) (bool, error) {
 	ok, err := m.Scheduler.Cancelled(ctx, id)
+	// we expect a context cancel error here which
+	// indicates a polling timeout. The subscribing
+	// client should look for the context cancel error
+	// and resume polling.
 	if err != nil {
 		return ok, err
 	}
 
-	// if a not found error is returned we should check
-	// the database to see if the stage is complete. If
+	// // TODO (bradrydzewski) we should be able to return
+	// // immediately if Cancelled returns true. This requires
+	// // some more testing but would avoid the extra database
+	// // call.
+	// if ok {
+	// 	return ok, err
+	// }
+
+	// if no error is returned we should check
+	// the database to see if the build is complete. If
 	// complete, return true.
-	stage, err := m.Stages.Find(ctx, id)
-	if err == nil {
+	build, err := m.Builds.Find(ctx, id)
+	if err != nil {
 		logger := logrus.WithError(err)
-		logger = logger.WithField("step-id", id)
-		logger.Warnln("manager: cannot find stage")
+		logger = logger.WithField("build-id", id)
+		logger.Warnln("manager: cannot find build")
 		return ok, err
 	}
-	return stage.IsDone(), nil
+	return build.IsDone(), nil
 }
 
 // Write writes a line to the build logs.

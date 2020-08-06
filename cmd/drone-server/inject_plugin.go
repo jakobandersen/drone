@@ -19,8 +19,10 @@ import (
 	"github.com/drone/drone/core"
 	"github.com/drone/drone/plugin/admission"
 	"github.com/drone/drone/plugin/config"
+	"github.com/drone/drone/plugin/converter"
 	"github.com/drone/drone/plugin/registry"
 	"github.com/drone/drone/plugin/secret"
+	"github.com/drone/drone/plugin/validator"
 	"github.com/drone/drone/plugin/webhook"
 	"github.com/drone/go-scm/scm"
 
@@ -31,8 +33,10 @@ import (
 var pluginSet = wire.NewSet(
 	provideAdmissionPlugin,
 	provideConfigPlugin,
+	provideConvertPlugin,
 	provideRegistryPlugin,
 	provideSecretPlugin,
+	provideValidatePlugin,
 	provideWebhookPlugin,
 )
 
@@ -44,6 +48,11 @@ func provideAdmissionPlugin(client *scm.Client, orgs core.OrganizationService, u
 		admission.Membership(orgs, config.Users.Filter),
 		admission.Open(config.Registration.Closed),
 		admission.Nobot(users, config.Users.MinAge),
+		admission.External(
+			config.Authn.Endpoint,
+			config.Authn.Secret,
+			config.Authn.SkipVerify,
+		),
 	)
 }
 
@@ -57,8 +66,26 @@ func provideConfigPlugin(client *scm.Client, contents core.FileService, conf spe
 			conf.Yaml.Secret,
 			conf.Yaml.SkipVerify,
 		),
-		config.Jsonnet(contents, conf.Jsonnet.Enabled),
 		config.Repository(contents),
+	)
+}
+
+// provideConvertPlugin is a Wire provider function that returns
+// a yaml conversion plugin based on the environment
+// configuration.
+func provideConvertPlugin(client *scm.Client, conf spec.Config) core.ConvertService {
+	return converter.Combine(
+		converter.Legacy(false),
+		converter.Starlark(false),
+		converter.Jsonnet(
+			conf.Jsonnet.Enabled,
+		),
+		converter.Remote(
+			conf.Convert.Endpoint,
+			conf.Convert.Secret,
+			conf.Convert.Extension,
+			conf.Convert.SkipVerify,
+		),
 	)
 }
 
@@ -90,6 +117,19 @@ func provideSecretPlugin(config spec.Config) core.SecretService {
 		config.Secrets.Endpoint,
 		config.Secrets.Password,
 		config.Secrets.SkipVerify,
+	)
+}
+
+// provideValidatePlugin is a Wire provider function that
+// returns a yaml validation plugin based on the environment
+// configuration.
+func provideValidatePlugin(conf spec.Config) core.ValidateService {
+	return validator.Combine(
+		validator.Remote(
+			conf.Validate.Endpoint,
+			conf.Validate.Secret,
+			conf.Validate.SkipVerify,
+		),
 	)
 }
 

@@ -12,31 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build oss
+package core
 
-package sink
+import "context"
 
-import (
-	"context"
+// Canceler cancels a build.
+type Canceler interface {
+	// Cancel cancels the provided build.
+	Cancel(context.Context, *Repository, *Build) error
 
-	"github.com/drone/drone/core"
-)
-
-// Datadog defines a no-op sink to datadog.
-type Datadog struct{}
-
-// New returns a no-op sink.
-func New(
-	core.UserStore,
-	core.RepositoryStore,
-	core.BuildStore,
-	core.System,
-	Config,
-) *Datadog {
-	return new(Datadog)
-}
-
-// Start starts the sink.
-func (d *Datadog) Start(ctx context.Context) error {
-	return nil
+	// CancelPending cancels all pending builds of the same
+	// type of as the provided build.
+	CancelPending(context.Context, *Repository, *Build) error
 }

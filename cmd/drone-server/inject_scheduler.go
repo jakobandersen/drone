@@ -34,8 +34,6 @@ var schedulerSet = wire.NewSet(
 // scheduler based on the environment configuration.
 func provideScheduler(store core.StageStore, config config.Config) core.Scheduler {
 	switch {
-	case config.Agent.Enabled:
-		return provideQueueScheduler(store, config)
 	case config.Kube.Enabled:
 		return provideKubernetesScheduler(config)
 	case config.Nomad.Enabled:
@@ -89,6 +87,7 @@ func provideNomadScheduler(config config.Config) core.Scheduler {
 	logrus.Info("main: nomad scheduler enabled")
 	sched, err := nomad.FromConfig(nomad.Config{
 		Datacenter:      config.Nomad.Datacenters,
+		Labels:          config.Nomad.Labels,
 		Namespace:       config.Nomad.Namespace,
 		Region:          config.Nomad.Region,
 		DockerImage:     config.Nomad.Image,

@@ -203,6 +203,9 @@ func (r *Runner) Run(ctx context.Context, id int64) error {
 		}
 		return env
 	})
+	if err != nil {
+		return r.handleError(ctx, m.Stage, err)
+	}
 
 	manifest, err := yaml.ParseString(y)
 	if err != nil {
@@ -253,6 +256,7 @@ func (r *Runner) Run(ctx context.Context, id int64) error {
 		append(
 			r.Privileged,
 			"plugins/docker",
+			"plugins/acr",
 			"plugins/ecr",
 			"plugins/gcr",
 			"plugins/heroku",

@@ -15,22 +15,28 @@
 package main
 
 import (
+	"time"
+
 	"github.com/drone/drone/cmd/drone-server/config"
 	"github.com/drone/drone/core"
 	"github.com/drone/drone/livelog"
 	"github.com/drone/drone/metric/sink"
 	"github.com/drone/drone/pubsub"
+	"github.com/drone/drone/service/canceler"
+	"github.com/drone/drone/service/canceler/reaper"
 	"github.com/drone/drone/service/commit"
-	"github.com/drone/drone/service/content"
+	contents "github.com/drone/drone/service/content"
 	"github.com/drone/drone/service/content/cache"
 	"github.com/drone/drone/service/hook"
 	"github.com/drone/drone/service/hook/parser"
+	"github.com/drone/drone/service/linker"
 	"github.com/drone/drone/service/netrc"
-	"github.com/drone/drone/service/org"
+	orgs "github.com/drone/drone/service/org"
 	"github.com/drone/drone/service/repo"
 	"github.com/drone/drone/service/status"
 	"github.com/drone/drone/service/syncer"
 	"github.com/drone/drone/service/token"
+	"github.com/drone/drone/service/transfer"
 	"github.com/drone/drone/service/user"
 	"github.com/drone/drone/session"
 	"github.com/drone/drone/trigger"
@@ -43,21 +49,25 @@ import (
 
 // wire set for loading the services.
 var serviceSet = wire.NewSet(
+	canceler.New,
 	commit.New,
 	cron.New,
 	livelog.New,
-	orgs.New,
+	linker.New,
 	parser.New,
 	pubsub.New,
-	repo.New,
 	token.Renewer,
+	transfer.New,
 	trigger.New,
 	user.New,
 
+	provideRepositoryService,
 	provideContentService,
 	provideDatadog,
 	provideHookService,
 	provideNetrcService,
+	provideOrgService,
+	provideReaper,
 	provideSession,
 	provideStatusService,
 	provideSyncer,
@@ -87,6 +97,23 @@ func provideNetrcService(client *scm.Client, renewer core.Renewer, config config
 		config.Cloning.AlwaysAuth,
 		config.Cloning.Username,
 		config.Cloning.Password,
+	)
+}
+
+// provideOrgService is a Wire provider function that
+// returns an organization service wrapped with a simple cache.
+func provideOrgService(client *scm.Client, renewer core.Renewer) core.OrganizationService {
+	return orgs.NewCache(orgs.New(client, renewer), 10, time.Minute*5)
+}
+
+// provideRepo is a Wire provider function that returns
+// a repo based on the environment configuration
+func provideRepositoryService(client *scm.Client, renewer core.Renewer, config config.Config) core.RepositoryService {
+	return repo.New(
+		client,
+		renewer,
+		config.Repository.Visibility,
+		config.Repository.Trusted,
 	)
 }
 
@@ -147,6 +174,25 @@ func provideSystem(config config.Config) *core.System {
 	}
 }
 
+// provideReaper is a Wire provider function that returns the
+// zombie build reaper.
+func provideReaper(
+	repos core.RepositoryStore,
+	builds core.BuildStore,
+	stages core.StageStore,
+	canceler core.Canceler,
+	config config.Config,
+) *reaper.Reaper {
+	return reaper.New(
+		repos,
+		builds,
+		stages,
+		canceler,
+		config.Cleanup.Running,
+		config.Cleanup.Pending,
+	)
+}
+
 // provideDatadog is a Wire provider function that returns the
 // datadog sink.
 func provideDatadog(
@@ -175,7 +221,7 @@ func provideDatadog(
 			EnableStash:      config.IsStash(),
 			EnableGogs:       config.IsGogs(),
 			EnableGitea:      config.IsGitea(),
-			EnableAgents:     config.Agent.Enabled,
+			EnableAgents:     !config.Agent.Disabled,
 			EnableNomad:      config.Nomad.Enabled,
 			EnableKubernetes: config.Kube.Enabled,
 		},

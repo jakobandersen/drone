@@ -70,8 +70,11 @@ type (
 		// Delete deletes a user from the datastore.
 		Delete(context.Context, *User) error
 
-		// Count returns a count of active users.
+		// Count returns a count of human and machine users.
 		Count(context.Context) (int64, error)
+
+		// CountHuman returns a count of human users.
+		CountHuman(context.Context) (int64, error)
 	}
 
 	// UserService provides access to user account
@@ -79,6 +82,9 @@ type (
 	UserService interface {
 		// Find returns the authenticated user.
 		Find(ctx context.Context, access, refresh string) (*User, error)
+
+		// FindLogin returns a user by username.
+		FindLogin(ctx context.Context, user *User, login string) (*User, error)
 	}
 )
 

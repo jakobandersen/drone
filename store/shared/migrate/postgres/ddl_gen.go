@@ -25,6 +25,14 @@ var migrations = []struct {
 		stmt: alterTableReposAddColumnNoPulls,
 	},
 	{
+		name: "alter-table-repos-add-column-cancel-pulls",
+		stmt: alterTableReposAddColumnCancelPulls,
+	},
+	{
+		name: "alter-table-repos-add-column-cancel-push",
+		stmt: alterTableReposAddColumnCancelPush,
+	},
+	{
 		name: "create-table-perms",
 		stmt: createTablePerms,
 	},
@@ -123,6 +131,14 @@ var migrations = []struct {
 	{
 		name: "alter-table-builds-add-column-deploy-id",
 		stmt: alterTableBuildsAddColumnDeployId,
+	},
+	{
+		name: "create-table-latest",
+		stmt: createTableLatest,
+	},
+	{
+		name: "create-index-latest-repo",
+		stmt: createIndexLatestRepo,
 	},
 }
 
@@ -270,6 +286,14 @@ var alterTableReposAddColumnNoPulls = `
 ALTER TABLE repos ADD COLUMN repo_no_pulls BOOLEAN NOT NULL DEFAULT false;
 `
 
+var alterTableReposAddColumnCancelPulls = `
+ALTER TABLE repos ADD COLUMN repo_cancel_pulls BOOLEAN NOT NULL DEFAULT false;
+`
+
+var alterTableReposAddColumnCancelPush = `
+ALTER TABLE repos ADD COLUMN repo_cancel_push BOOLEAN NOT NULL DEFAULT false;
+`
+
 //
 // 003_create_table_perms.sql
 //
@@ -369,7 +393,7 @@ CREATE TABLE IF NOT EXISTS stages (
 ,stage_repo_id     INTEGER
 ,stage_build_id    INTEGER
 ,stage_number      INTEGER
-,stage_name        VARCHAR(50)
+,stage_name        VARCHAR(100)
 ,stage_kind        VARCHAR(50)
 ,stage_type        VARCHAR(50)
 ,stage_status      VARCHAR(50)
@@ -566,4 +590,25 @@ CREATE TABLE IF NOT EXISTS orgsecrets (
 
 var alterTableBuildsAddColumnDeployId = `
 ALTER TABLE builds ADD COLUMN build_deploy_id INTEGER NOT NULL DEFAULT 0;
+`
+
+//
+// 015_create_table_refs.sql
+//
+
+var createTableLatest = `
+CREATE TABLE IF NOT EXISTS latest (
+ latest_repo_id  INTEGER
+,latest_build_id INTEGER
+,latest_type     VARCHAR(50)
+,latest_name     VARCHAR(500)
+,latest_created  INTEGER
+,latest_updated  INTEGER
+,latest_deleted  INTEGER
+,PRIMARY KEY(latest_repo_id, latest_type, latest_name)
+);
+`
+
+var createIndexLatestRepo = `
+CREATE INDEX IF NOT EXISTS ix_latest_repo ON latest (latest_repo_id);
 `

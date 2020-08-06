@@ -127,6 +127,7 @@ tasks:
           --character-set-server=utf8mb4
           --collation-server=utf8mb4_unicode_ci
       - cmd: go test -count=1 github.com/drone/drone/store/batch
+      - cmd: go test -count=1 github.com/drone/drone/store/batch2
       - cmd: go test -count=1 github.com/drone/drone/store/build
       - cmd: go test -count=1 github.com/drone/drone/store/cron
       - cmd: go test -count=1 github.com/drone/drone/store/logs
@@ -142,22 +143,24 @@ tasks:
   test-postgres:
     env:
       DRONE_DATABASE_DRIVER: postgres
-      DRONE_DATABASE_DATASOURCE: host=localhost user=postgres dbname=postgres sslmode=disable
+      DRONE_DATABASE_DATASOURCE: host=localhost user=postgres password=postgres dbname=postgres sslmode=disable
       GO111MODULE: 'on'
     cmds:
       - cmd: docker kill postgres
         ignore_error: true
-        silent: true
-      - silent: true
+        silent: false
+      - silent: false
         cmd: >
           docker run
           -p 5432:5432
+          --env POSTGRES_PASSWORD=postgres
           --env POSTGRES_USER=postgres
           --name postgres
           --detach
           --rm
           postgres:9-alpine
       - cmd: go test -count=1 github.com/drone/drone/store/batch
+      - cmd: go test -count=1 github.com/drone/drone/store/batch2
       - cmd: go test -count=1 github.com/drone/drone/store/build
       - cmd: go test -count=1 github.com/drone/drone/store/cron
       - cmd: go test -count=1 github.com/drone/drone/store/logs
